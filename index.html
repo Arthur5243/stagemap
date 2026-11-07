@@ -58,6 +58,28 @@
   .gate .fineprint{margin-top:18px;font-size:12px;color:var(--muted);line-height:1.6}
   .gate .fineprint code{background:#f6f6f7;padding:1px 6px;border-radius:5px;font-size:11px}
 
+  /* ====== Location row ====== */
+  .loc-row{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;align-items:center}
+  .loc-city{flex:1;min-width:180px;display:flex;align-items:center;gap:8px;padding:9px 13px;border:1px solid var(--line);border-radius:12px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease}
+  .loc-city:focus-within{border-color:var(--violet);box-shadow:0 0 0 4px var(--violet-50)}
+  .loc-city input{flex:1;border:0;outline:0;background:transparent;font-size:14px;padding:2px 0;font-family:inherit}
+  .loc-radius{display:flex;align-items:center;gap:8px;padding:0 13px;border:1px solid var(--line);border-radius:12px;background:#fff;height:40px}
+  .loc-radius label{font-size:12px;color:var(--muted);font-weight:600}
+  .loc-radius select{border:0;outline:0;background:transparent;font-size:14px;padding:4px 0;font-family:inherit;cursor:pointer}
+  .loc-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border:1px solid var(--violet);border-radius:12px;background:var(--violet-50);color:var(--violet-ink);cursor:pointer;font-weight:600;font-size:13px;height:40px;transition:background .15s ease}
+  .loc-btn:hover{background:#ece2ff}
+
+  /* ====== Custom send zone ====== */
+  .custom-send{margin-top:24px}
+  .custom-send-inner{padding:18px;background:#fafafa;border:1px dashed var(--line);border-radius:14px}
+  .custom-send-title{font-weight:700;font-size:15px;letter-spacing:-.01em;margin-bottom:4px}
+  .custom-send-sub{color:var(--muted);font-size:13px;margin-bottom:12px}
+  .custom-send-row{display:flex;gap:8px;flex-wrap:wrap}
+  .custom-send-row input{flex:1;min-width:180px;padding:10px 13px;border:1px solid var(--line);border-radius:10px;outline:0;font-size:14px;background:#fff;font-family:inherit}
+  .custom-send-row input:focus{border-color:var(--violet);box-shadow:0 0 0 3px var(--violet-50)}
+  .custom-send-btn{padding:10px 16px;background:var(--ink);color:#fff;border:0;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;transition:background .15s ease}
+  .custom-send-btn:hover{background:var(--violet)}
+
   /* ====== Login form ====== */
   .login-form{display:flex;flex-direction:column;gap:10px;text-align:left}
   .login-form label{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:-6px}
@@ -220,15 +242,89 @@ function initials(name){
    STATE
    ============================================================ */
 const state = {
-  user: null,        // {email, name, picture, token}
-  tab: "discover",   // discover | search | messages
+  user: null,
+  tab: "discover",
   search: "",
   filter: "Tous",
+  city: "",
+  radiusKm: 0,
+  userLat: null,
+  userLng: null,
+  userCity: "",
   randomPool: [],
-  threads: new Map(), // key=companyEmail → {company, messages[]}
+  threads: new Map(),
   selectedThread: null,
   pollTimer: null
 };
+
+/* Coordonnées approx. des villes françaises présentes dans notre dataset */
+const CITY_COORDS = {
+  "paris":[48.8566,2.3522],"lyon":[45.7640,4.8357],"marseille":[43.2965,5.3698],
+  "toulouse":[43.6047,1.4442],"nice":[43.7102,7.2620],"nantes":[47.2184,-1.5536],
+  "bordeaux":[44.8378,-0.5792],"lille":[50.6292,3.0573],"rennes":[48.1173,-1.6778],
+  "montpellier":[43.6109,3.8772],"strasbourg":[48.5734,7.7521],"grenoble":[45.1885,5.7245],
+  "boulogne-billancourt":[48.8355,2.2411],"boulogne":[48.8355,2.2411],
+  "clichy":[48.9048,2.3059],"issy-les-moulineaux":[48.8237,2.2698],"issy":[48.8237,2.2698],
+  "levallois":[48.8956,2.2860],"neuilly":[48.8880,2.2680],"la défense":[48.8923,2.2378],
+  "massy":[48.7262,2.2800],"saint-denis":[48.9362,2.3574],"saint-ouen":[48.9070,2.3334],
+  "nanterre":[48.8924,2.2069],"rueil-malmaison":[48.8777,2.1868],"rueil":[48.8777,2.1868],
+  "montreuil":[48.8614,2.4414],"puteaux":[48.8847,2.2385],"suresnes":[48.8700,2.2203],
+  "courbevoie":[48.8974,2.2567],"vanves":[48.8238,2.2906],"clamart":[48.8019,2.2669],
+  "meudon":[48.8139,2.2347],"vélizy":[48.7820,2.1810],"saint-cloud":[48.8400,2.2169],
+  "gennevilliers":[48.9353,2.2954],"saint-étienne":[45.4397,4.3872],"reims":[49.2583,4.0317],
+  "dijon":[47.3220,5.0415],"angers":[47.4784,-0.5632],"le havre":[49.4944,0.1079],
+  "clermont-ferrand":[45.7772,3.0870],"caen":[49.1829,-0.3707],"toulon":[43.1242,5.9280],
+  "tours":[47.3941,0.6848],"limoges":[45.8336,1.2611],"pau":[43.2951,-0.3708],
+  "amiens":[49.8941,2.2958],"besançon":[47.2380,6.0243],"orléans":[47.9029,1.9039],
+  "rouen":[49.4432,1.0993],"metz":[49.1193,6.1757],"nancy":[48.6921,6.1844],
+  "villeneuve-d'ascq":[50.6195,3.1434],"roubaix":[50.6942,3.1746],"lesquin":[50.5833,3.1167],
+  "villeurbanne":[45.7667,4.8803],"aubervilliers":[48.9144,2.3842],"charenton":[48.8213,2.4123],
+  "marcq-en-barœul":[50.6700,3.0956],"hem":[50.6558,3.1872],"cergy":[49.0392,2.0768],
+  "villejuif":[48.7975,2.3647],"ivry-sur-seine":[48.8114,2.3879],"ivry":[48.8114,2.3879],
+  "chessy":[48.8686,2.7757],"noisiel":[48.8566,2.6333],"noisy-le-grand":[48.8366,2.5497],
+  "guyancourt":[48.7708,2.0756],"cannes":[43.5528,7.0174],"sophia antipolis":[43.6167,7.0667],
+  "grasse":[43.6586,6.9225],"manosque":[43.8292,5.7836],"aix-en-provence":[43.5297,5.4474],
+  "castres":[43.6060,2.2412],"pessac":[44.8010,-0.6306],"brest":[48.3905,-4.4861],
+  "la gacilly":[47.8333,-2.1333],"la rochelle":[46.1591,-1.1520],"montpellier":[43.6109,3.8772],
+  "laval":[48.0737,-0.7700],"vergèze":[43.7474,4.2287],"carros":[43.7904,7.1860],
+  "mont-saint-aignan":[49.4653,1.0870],"saint-priest":[45.6981,4.9430],"le bourget":[48.9389,2.4253],
+  "orly":[48.7458,2.3831],"roissy":[49.0097,2.5479],"figeac":[44.6093,2.0325],
+  "satory":[48.7902,2.1072],"versailles":[48.8049,2.1204],"châtillon":[48.8008,2.2919],
+  "marignane":[43.4166,5.2160],"pouzauges":[46.7850,-0.8311],"maisons-alfort":[48.8046,2.4393],
+  "villepinte":[48.9536,2.5400],"beaucouzé":[47.4731,-0.6230],"limonest":[45.8368,4.7640],
+  "noisy-le-grand":[48.8366,2.5497],"bezons":[48.9348,2.2110],"bois-colombes":[48.9166,2.2708],
+  "asnières":[48.9150,2.2866],"colombes":[48.9227,2.2544],"la garenne-colombes":[48.9048,2.2451],
+  "rungis":[48.7489,2.3488],"vincennes":[48.8475,2.4388],"saint-herblain":[47.2167,-1.6500],
+  "arles":[43.6764,4.6280],"troyes":[48.2973,4.0744],"lens":[50.4319,2.8302]
+};
+function distKm(a,b,c,d){const r=d=>d*Math.PI/180;const R=6371;const dL=r(c-a);const dG=r(d-b);const x=Math.sin(dL/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dG/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+function cityCoords(name){if(!name)return null;const k=name.toLowerCase().trim();if(CITY_COORDS[k])return CITY_COORDS[k];for(const city in CITY_COORDS){if(k.includes(city)||city.includes(k))return CITY_COORDS[city];}return null;}
+function matchLocation(c){
+  if(state.userLat!=null && state.radiusKm>0){
+    const co=cityCoords(c.v);
+    if(!co)return false;
+    return distKm(state.userLat,state.userLng,co[0],co[1]) <= state.radiusKm;
+  }
+  if(state.city){
+    return c.v.toLowerCase().includes(state.city.toLowerCase());
+  }
+  return true;
+}
+function useGeolocation(){
+  if(!navigator.geolocation){toast("Géolocalisation indispo.");return;}
+  toast("Détection de ta position…");
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    state.userLat=pos.coords.latitude;state.userLng=pos.coords.longitude;
+    try{
+      const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${state.userLat}&lon=${state.userLng}&zoom=10&accept-language=fr`,{headers:{"Accept":"application/json"}});
+      const d=await r.json();
+      state.userCity=d.address?.city||d.address?.town||d.address?.village||d.address?.municipality||"";
+    }catch(e){console.warn(e);}
+    if(state.radiusKm===0)state.radiusKm=20;
+    toast("Position : "+(state.userCity||"localisée")+" ("+state.radiusKm+" km)");
+    renderPage();
+  },err=>{toast("Géoloc refusée.");},{timeout:10000,maximumAge:60000});
+}
 
 /* ============================================================
    UI RENDER
@@ -425,31 +521,117 @@ function matchFilter(c,f){
   const map={"Tech":"tech","Luxe":"luxe","Banque":"banque","Conseil":"conseil","Média":"média","Jeux vidéo":"jeux","Énergie":"énergie","Santé":"santé","Retail":"retail","Aéronautique":"aéronautique","Auto":"automobile"};
   return x.includes(map[f]||f.toLowerCase());
 }
+function applyAllFilters(){
+  const q=state.search.trim().toLowerCase();
+  return COMPANIES
+    .filter(c=>matchFilter(c,state.filter))
+    .filter(matchLocation)
+    .filter(c=>{
+      if(!q)return true;
+      return c.n.toLowerCase().includes(q) || c.c.toLowerCase().includes(q) || c.v.toLowerCase().includes(q);
+    });
+}
 function renderSearch(){
+  const inputEl = el("input",{type:"text",placeholder:"Nom d'entreprise, secteur…",value:state.search,autocomplete:"off"});
+  const cityEl = el("input",{type:"text",placeholder:"Ville (ex: Paris, Lyon…)",value:state.city||state.userCity,autocomplete:"off"});
+  const radiusEl = el("select",{},
+    el("option",{value:"0"},"Peu importe"),
+    el("option",{value:"5"},"5 km"),
+    el("option",{value:"10"},"10 km"),
+    el("option",{value:"20"},"20 km"),
+    el("option",{value:"50"},"50 km"),
+    el("option",{value:"100"},"100 km"),
+    el("option",{value:"300"},"300 km")
+  );
+  radiusEl.value = String(state.radiusKm||0);
+  const sub = el("div",{class:"sub"});
+  const grid = el("div",{class:"grid"});
+  const customZone = el("div",{class:"custom-send"});
+
+  function updateResults(){
+    const results = applyAllFilters();
+    sub.textContent = `${results.length} entreprise(s)` + (state.userCity?` · autour de ${state.userCity}`:"");
+    grid.innerHTML = "";
+    if(results.length === 0){
+      grid.appendChild(el("div",{class:"empty-state"},
+        el("div",{class:"icon"},"🔍"),
+        el("div",{},"Aucune entreprise ne correspond.")
+      ));
+    } else {
+      for(const c of results) grid.appendChild(companyCard(c));
+    }
+    renderCustomSend();
+  }
+  function renderCustomSend(){
+    customZone.innerHTML = "";
+    const title = state.search.trim() || "une entreprise";
+    customZone.appendChild(el("div",{class:"custom-send-inner"},
+      el("div",{class:"custom-send-title"},`Pas trouvé ${state.search.trim() ? `"${state.search.trim()}"` : "ce que tu cherches"} ?`),
+      el("div",{class:"custom-send-sub"},"Envoie à n'importe quelle boîte depuis Gmail (même template de mail)"),
+      (() => {
+        const nameI = el("input",{type:"text",placeholder:"Nom de l'entreprise",value:state.search.trim()});
+        const mailI = el("input",{type:"email",placeholder:"email@entreprise.com"});
+        const btn = el("button",{type:"button",class:"custom-send-btn"},"Ouvrir dans Gmail");
+        btn.addEventListener("click", ()=>{
+          const n = nameI.value.trim(); const m = mailI.value.trim();
+          if(!n || !m){toast("Nom + email requis.");return;}
+          if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)){toast("Email invalide.");return;}
+          openCompose({n, m, c:"Entreprise libre", v:"—"});
+        });
+        return el("div",{class:"custom-send-row"}, nameI, mailI, btn);
+      })()
+    ));
+  }
+  let t;
+  inputEl.addEventListener("input", e=>{
+    state.search = e.target.value;
+    clearTimeout(t); t = setTimeout(updateResults, 80);
+  });
+  cityEl.addEventListener("input", e=>{
+    state.city = e.target.value;
+    state.userLat = null; state.userLng = null; // ville manuelle → on désactive géoloc
+    clearTimeout(t); t = setTimeout(updateResults, 120);
+  });
+  radiusEl.addEventListener("change", e=>{
+    state.radiusKm = parseInt(e.target.value,10) || 0;
+    updateResults();
+  });
+  const geoBtn = el("button",{type:"button",class:"loc-btn",title:"Utiliser ma position"},
+    el("span",{html:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="#7C3AED"/><circle cx="12" cy="12" r="8" stroke="#7C3AED" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="#7C3AED" stroke-width="2"/></svg>'}),
+    "Position actuelle"
+  );
+  geoBtn.addEventListener("click", useGeolocation);
+
   const bar = el("div",{class:"searchbar"},
     el("span",{html:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#6b6b6b" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="#6b6b6b" stroke-width="2" stroke-linecap="round"/></svg>'}),
-    el("input",{type:"text",placeholder:"Nom d'entreprise, secteur, ville…",value:state.search,oninput:e=>{state.search=e.target.value;renderPage();}}),
+    inputEl,
     el("span",{class:"k"},"⌘K")
   );
-  const filters = el("div",{class:"filters"},
-    ...CATS.map(c=>el("button",{class:state.filter===c?"on":"",onClick:()=>{state.filter=c;renderPage();}},c))
+  const locRow = el("div",{class:"loc-row"},
+    el("div",{class:"loc-city"},
+      el("span",{html:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="#6b6b6b"/></svg>'}),
+      cityEl
+    ),
+    el("div",{class:"loc-radius"}, el("label",{},"Rayon"), radiusEl),
+    geoBtn
   );
-  const q=state.search.trim().toLowerCase();
-  const results = COMPANIES.filter(c=>matchFilter(c,state.filter)).filter(c=>{
-    if(!q)return true;
-    return c.n.toLowerCase().includes(q) || c.c.toLowerCase().includes(q) || c.v.toLowerCase().includes(q);
-  });
-  const grid = results.length
-    ? el("div",{class:"grid"}, ...results.map(companyCard))
-    : el("div",{class:"empty-state"}, el("div",{class:"icon"},"🔍"), el("div",{},"Aucun résultat."));
+  const filters = el("div",{class:"filters"},
+    ...CATS.map(c=>el("button",{type:"button",class:state.filter===c?"on":"",onClick:()=>{state.filter=c;updateFilterUi();updateResults();}},c))
+  );
+  function updateFilterUi(){
+    const btns = filters.querySelectorAll("button");
+    btns.forEach((b,i)=>b.className = state.filter===CATS[i] ? "on" : "");
+  }
+  updateResults();
+  setTimeout(()=>inputEl.focus(),0);
   return el("section",{class:"page on"},
     el("div",{class:"section-head"},
       el("div",{},
         el("h2",{},"Rechercher"),
-        el("div",{class:"sub"},`${results.length} entreprise(s)`)
+        sub
       )
     ),
-    bar, filters, grid
+    bar, locRow, filters, grid, customZone
   );
 }
 
