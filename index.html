@@ -277,15 +277,52 @@ function renderGate(){
     ),
     el("h1",{html:"Trouve ton <em>stage</em> parmi 1000+ entreprises."}),
     el("p",{},"Connecte-toi avec ton mail Google. Tu contactes les entreprises depuis ton Gmail en un clic, les réponses arrivent dans ta boîte."),
-    el("button",{class:"gbtn",onClick:signIn},
-      el("span",{html:'<svg viewBox="0 0 24 24"><path fill="#fff" d="M21.35 11.1H12v3.2h5.35c-.23 1.4-1.6 4.1-5.35 4.1-3.22 0-5.84-2.66-5.84-5.95S8.78 6.5 12 6.5c1.83 0 3.06.78 3.76 1.44l2.56-2.47C16.7 3.9 14.6 3 12 3 6.98 3 3 7 3 12s3.98 9 9 9c5.2 0 8.6-3.66 8.6-8.82 0-.6-.08-1.06-.25-1.08z"/></svg>'}),
-      "Continuer avec Google"
-    ),
+    el("div",{id:"gbtn-host",style:"display:flex;justify-content:center;min-height:44px"}),
     el("div",{class:"fineprint"},
       "Login Google. Au clic sur une entreprise, Gmail s'ouvre avec le mail déjà rédigé."
     )
   );
+  setTimeout(renderGoogleButton, 0);
   return el("div",{class:"gate"},card);
+}
+function renderGoogleButton(){
+  const host = document.getElementById("gbtn-host");
+  if(!host) return;
+  if(!window.google || !google.accounts || !google.accounts.id){
+    host.innerHTML = '<div style="color:#6b6b6b;font-size:13px">Chargement du bouton Google…</div>';
+    setTimeout(renderGoogleButton, 500);
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleCredential,
+    auto_select: false,
+    cancel_on_tap_outside: false,
+    ux_mode: "popup",
+    use_fedcm_for_prompt: true
+  });
+  host.innerHTML = "";
+  google.accounts.id.renderButton(host, {
+    theme: "filled_black",
+    size: "large",
+    text: "continue_with",
+    shape: "pill",
+    locale: "fr",
+    width: 260
+  });
+}
+function handleCredential(resp){
+  try {
+    const parts = resp.credential.split(".");
+    const payload = JSON.parse(decodeURIComponent(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/")).split("").map(c=>"%"+("00"+c.charCodeAt(0).toString(16)).slice(-2)).join("")));
+    state.user = {email: payload.email, name: payload.name, picture: payload.picture};
+    localStorage.setItem("stagemap_user", JSON.stringify(state.user));
+    loadThreadsFromStorage();
+    render();
+  } catch(e) {
+    toast("Erreur de connexion : "+(e.message||e));
+    console.error(e);
+  }
 }
 
 /* ===== Discover (random pool) ===== */
@@ -480,39 +517,11 @@ function render(){
 }
 
 /* ============================================================
-   AUTH — Google Identity Services
+   AUTH — Google Identity Services (bouton officiel, pas de popup)
    ============================================================ */
-let tokenClient=null;
-function signIn(){
-  if(GOOGLE_CLIENT_ID.startsWith("REMPLACE")){
-    toast("⚠ OAuth Client ID manquant. Édite GOOGLE_CLIENT_ID dans index.html.");
-    return;
-  }
-  if(!window.google || !google.accounts || !google.accounts.oauth2){
-    toast("Google script pas encore chargé, réessaie dans une seconde.");
-    return;
-  }
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: GMAIL_SCOPES,
-    prompt: "consent",
-    callback: async (resp)=>{
-      if(resp.error){toast("Connexion annulée.");return;}
-      const token = resp.access_token;
-      try {
-        const u = await fetch("https://www.googleapis.com/oauth2/v3/userinfo",{headers:{Authorization:"Bearer "+token}}).then(r=>r.json());
-        state.user = {email:u.email, name:u.name, picture:u.picture, token};
-        localStorage.setItem("stagemap_user", JSON.stringify({email:u.email,name:u.name,picture:u.picture}));
-        loadThreadsFromStorage();
-        render();
-      } catch(e){ toast("Erreur de connexion."); console.error(e); }
-    }
-  });
-  tokenClient.requestAccessToken();
-}
 function signOut(){
-  if(state.user && window.google && google.accounts && google.accounts.oauth2 && state.user.token){
-    try{google.accounts.oauth2.revoke(state.user.token);}catch{}
+  if(window.google && google.accounts && google.accounts.id){
+    try{google.accounts.id.disableAutoSelect();}catch{}
   }
   localStorage.removeItem("stagemap_user");
   state.user=null;state.threads=new Map();state.selectedThread=null;
@@ -652,8 +661,10 @@ document.addEventListener("keydown",e=>{
   if(cached){
     try{
       const u = JSON.parse(cached);
-      // Note : token non persisté (sécurité). On invite à se reconnecter.
-      state.user = null;
+      if(u && u.email){
+        state.user = u;
+        loadThreadsFromStorage();
+      }
     }catch{}
   }
   render();
