@@ -60,6 +60,17 @@
   .gate .fineprint{margin-top:18px;font-size:12px;color:var(--muted);line-height:1.6}
   .gate .fineprint code{background:#f6f6f7;padding:1px 6px;border-radius:5px;font-size:11px}
 
+  /* ====== Login form ====== */
+  .login-form{display:flex;flex-direction:column;gap:10px;text-align:left}
+  .login-form label{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:-6px}
+  .login-form input{padding:11px 13px;border:1px solid var(--line);border-radius:12px;outline:0;font-size:14px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease;font-family:inherit}
+  .login-form input:focus{border-color:var(--violet);box-shadow:0 0 0 4px var(--violet-50)}
+  .login-form .login-submit{margin-top:8px;padding:12px 18px;background:var(--violet);color:#fff;border:0;border-radius:12px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:-.01em;transition:background .15s ease}
+  .login-form .login-submit:hover{background:var(--violet-ink)}
+  .login-err{min-height:16px;font-size:13px;color:#dc2626;text-align:center;margin-top:-4px}
+  .divider{display:flex;align-items:center;gap:12px;margin:18px 0 14px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
+
   /* ====== Section header ====== */
   .section-head{display:flex;align-items:end;justify-content:space-between;margin:28px 0 14px}
   .section-head h2{margin:0;font-size:24px;letter-spacing:-.025em}
@@ -271,19 +282,68 @@ function tabBtn(id,label){
   },label);
 }
 function renderGate(){
+  const form = el("form",{class:"login-form",onSubmit:handleLoginSubmit},
+    el("label",{for:"login-email"},"Email"),
+    el("input",{type:"email",id:"login-email",required:"required",autocomplete:"email",placeholder:"toi@exemple.com"}),
+    el("label",{for:"login-name"},"Prénom (pour tes mails)"),
+    el("input",{type:"text",id:"login-name",required:"required",autocomplete:"given-name",placeholder:"Arthur"}),
+    el("label",{for:"login-password"},"Mot de passe"),
+    el("input",{type:"password",id:"login-password",required:"required",autocomplete:"current-password",placeholder:"6 caractères min.",minlength:"6"}),
+    el("div",{class:"login-err",id:"login-err"}),
+    el("button",{type:"submit",class:"login-submit"},"Se connecter / S'inscrire")
+  );
   const card = el("div",{class:"gate-card"},
     el("div",{class:"brand",style:"justify-content:center;margin-bottom:12px"},
       el("div",{class:"logo"},"S")
     ),
     el("h1",{html:"Trouve ton <em>stage</em> parmi 1000+ entreprises."}),
-    el("p",{},"Connecte-toi avec ton mail Google. Tu contactes les entreprises depuis ton Gmail en un clic, les réponses arrivent dans ta boîte."),
+    form,
+    el("div",{class:"divider"},el("span",{},"ou")),
     el("div",{id:"gbtn-host",style:"display:flex;justify-content:center;min-height:44px"}),
     el("div",{class:"fineprint"},
-      "Login Google. Au clic sur une entreprise, Gmail s'ouvre avec le mail déjà rédigé."
+      "Première fois ? Email/mdp crée ton compte localement (sauvé dans ton navigateur). Google = login en 1 clic."
     )
   );
   setTimeout(renderGoogleButton, 0);
+  setTimeout(()=>{document.getElementById("login-email")?.focus();},50);
   return el("div",{class:"gate"},card);
+}
+async function sha256Hex(str){
+  const buf = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function handleLoginSubmit(e){
+  e.preventDefault();
+  const email = document.getElementById("login-email").value.trim().toLowerCase();
+  const name = document.getElementById("login-name").value.trim();
+  const password = document.getElementById("login-password").value;
+  const errEl = document.getElementById("login-err");
+  errEl.textContent = "";
+  if(!email || !name || !password){errEl.textContent="Remplis tout.";return;}
+  if(password.length < 6){errEl.textContent="Mot de passe trop court (6 min.).";return;}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){errEl.textContent="Email invalide.";return;}
+  try {
+    const hash = await sha256Hex(password + "::" + email);
+    const usersKey = "stagemap_users";
+    const users = JSON.parse(localStorage.getItem(usersKey) || "{}");
+    if(users[email]){
+      if(users[email].pwd !== hash){errEl.textContent="Mauvais mot de passe pour cet email.";return;}
+      // Met à jour le nom si changé
+      if(name && users[email].name !== name){users[email].name = name; localStorage.setItem(usersKey, JSON.stringify(users));}
+    } else {
+      users[email] = {pwd: hash, name, createdAt: Date.now()};
+      localStorage.setItem(usersKey, JSON.stringify(users));
+    }
+    state.user = {email, name, picture: ""};
+    localStorage.setItem("stagemap_user", JSON.stringify(state.user));
+    loadThreadsFromStorage();
+    render();
+    toast("Connecté ✓");
+  } catch(err) {
+    errEl.textContent = "Erreur : " + (err.message || err);
+    console.error(err);
+  }
 }
 function renderGoogleButton(){
   const host = document.getElementById("gbtn-host");
