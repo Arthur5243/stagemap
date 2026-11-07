@@ -247,7 +247,7 @@ const state = {
   search: "",
   filter: "Tous",
   city: "",
-  radiusKm: 0,
+  radiusKm: 20,
   userLat: null,
   userLng: null,
   userCity: "",
@@ -300,14 +300,31 @@ const CITY_COORDS = {
 function distKm(a,b,c,d){const r=d=>d*Math.PI/180;const R=6371;const dL=r(c-a);const dG=r(d-b);const x=Math.sin(dL/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dG/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function cityCoords(name){if(!name)return null;const k=name.toLowerCase().trim();if(CITY_COORDS[k])return CITY_COORDS[k];for(const city in CITY_COORDS){if(k.includes(city)||city.includes(k))return CITY_COORDS[city];}return null;}
 function matchLocation(c){
-  if(state.userLat!=null && state.radiusKm>0){
-    const co=cityCoords(c.v);
-    if(!co)return false;
-    return distKm(state.userLat,state.userLng,co[0],co[1]) <= state.radiusKm;
+  // Point de référence : géoloc > ville tapée
+  let refLat=null, refLng=null;
+  if(state.userLat!=null){
+    refLat=state.userLat; refLng=state.userLng;
+  } else if(state.city){
+    const rc = cityCoords(state.city);
+    if(rc){refLat=rc[0]; refLng=rc[1];}
   }
-  if(state.city){
-    return c.v.toLowerCase().includes(state.city.toLowerCase());
+  // Pas de point de référence → aucun filtre loc (sauf si on a tapé une ville sans coords connues)
+  if(refLat==null){
+    if(state.city){
+      return c.v.toLowerCase().includes(state.city.toLowerCase());
+    }
+    return true;
   }
+  // Point de ref OK, radius > 0 → filtre par distance
+  if(state.radiusKm > 0){
+    const co = cityCoords(c.v);
+    if(!co){
+      // Pas de coords pour cette ville → on garde quand même si match textuel de la ville tapée
+      return state.city ? c.v.toLowerCase().includes(state.city.toLowerCase()) : true;
+    }
+    return distKm(refLat, refLng, co[0], co[1]) <= state.radiusKm;
+  }
+  // Radius = 0 "Peu importe" → aucun filtre distance
   return true;
 }
 function useGeolocation(){
